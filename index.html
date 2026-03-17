@@ -225,6 +225,33 @@
     }
     .delete-btn:hover { color: #ef4444; }
 
+    /* ── Индикатор приоритета — цветная точка перед названием задачи ── */
+    .priority-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Селектор приоритета в модалке — три кнопки в ряд ── */
+    .priority-selector {
+      display: flex;
+      gap: 8px;
+    }
+
+    .priority-option {
+      flex: 1;
+      padding: 8px 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .priority-option:hover { background: #f3f4f6; }
+
     /* ── Затемнение под модальным окном ── */
     .modal-overlay {
       position: fixed;
@@ -303,6 +330,16 @@
     const LEGACY_KEY  = 'todo-tasks';    // ключ старого формата (V1)
     const DEFAULT_LIST_ID = 'default';
 
+    /**
+     * Справочник приоритетов.
+     * order — порядок сортировки (меньше = выше в списке).
+     */
+    const PRIORITIES = {
+      high:   { label: 'Высокий', color: '#ef4444', order: 0 },
+      medium: { label: 'Средний', color: '#f59e0b', order: 1 },
+      low:    { label: 'Низкий',  color: '#9ca3af', order: 2 },
+    };
+
     // ── Вспомогательные функции ───────────────────────────────
 
     /** Возвращает сегодняшнюю дату в формате YYYY-MM-DD (локальный часовой пояс). */
@@ -354,6 +391,18 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ lists, tasks, activeListId }));
     }
 
+    /**
+     * Сортирует задачи по приоритету: Высокий → Средний → Низкий.
+     * Задачи без поля priority считаются «Средним».
+     */
+    function sortByPriority(arr) {
+      return [...arr].sort(
+        (a, b) =>
+          (PRIORITIES[a.priority ?? 'medium'].order) -
+          (PRIORITIES[b.priority ?? 'medium'].order)
+      );
+    }
+
     // Загружаем данные один раз при старте приложения
     const initialData = loadData();
 
@@ -370,6 +419,9 @@
         task.completed ? 'completed' : '',
       ].filter(Boolean).join(' ');
 
+      // Берём метаданные приоритета; если поле не задано — считаем «Средним»
+      const priority = PRIORITIES[task.priority ?? 'medium'];
+
       return (
         <div className={classes}>
           {/* Чекбокс переключает статус выполнения */}
@@ -378,6 +430,12 @@
             checked={task.completed}
             onChange={() => onToggle(task.id)}
             aria-label={`Отметить "${task.title}"`}
+          />
+          {/* Цветная точка — визуальный индикатор приоритета */}
+          <span
+            className="priority-dot"
+            style={{ background: priority.color }}
+            title={priority.label}
           />
           <span className="task-title">{task.title}</span>
           <span className="task-date">{task.dueDate}</span>
@@ -479,13 +537,14 @@
      * minDate передаётся снаружи, чтобы запретить выбор прошедших дат.
      */
     function AddTaskModal({ onAdd, onClose, minDate }) {
-      const [title, setTitle] = useState('');
-      const [dueDate, setDueDate] = useState(getToday); // по умолчанию — сегодня
+      const [title, setTitle]       = useState('');
+      const [dueDate, setDueDate]   = useState(getToday); // по умолчанию — сегодня
+      const [priority, setPriority] = useState('medium'); // по умолчанию — Средний
 
       function handleSubmit(e) {
         e.preventDefault();
         if (!title.trim()) return;
-        onAdd({ title: title.trim(), dueDate });
+        onAdd({ title: title.trim(), dueDate, priority });
         onClose();
       }
 
@@ -518,6 +577,23 @@
                 onChange={e => setDueDate(e.target.value)}
                 required
               />
+              {/* Три кнопки выбора приоритета; активная окрашивается в цвет приоритета */}
+              <div className="priority-selector">
+                {Object.entries(PRIORITIES).map(([key, p]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className="priority-option"
+                    style={priority === key
+                      ? { background: p.color, borderColor: p.color, color: '#fff' }
+                      : {}
+                    }
+                    onClick={() => setPriority(key)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={onClose}>Отмена</button>
                 <button type="submit" className="btn-submit">Добавить</button>
@@ -551,19 +627,21 @@
       // Задачи только активного списка
       const activeTasks = tasks.filter(t => t.listId === activeListId);
 
-      // Из активных задач: на сегодня, просроченные, на выбранный будущий день
-      const todayTasks   = activeTasks.filter(t => t.dueDate === today);
-      const overdueTasks = activeTasks.filter(t => t.dueDate < today);
-      const futureTasks  = activeTasks.filter(t => t.dueDate === viewDate);
+      // Из активных задач: на сегодня, просроченные, на выбранный будущий день.
+      // Каждый список сортируется по приоритету: Высокий → Средний → Низкий.
+      const todayTasks   = sortByPriority(activeTasks.filter(t => t.dueDate === today));
+      const overdueTasks = sortByPriority(activeTasks.filter(t => t.dueDate < today));
+      const futureTasks  = sortByPriority(activeTasks.filter(t => t.dueDate === viewDate));
 
       // ── Обработчики задач ─────────────────────────────────
 
       /** Создаёт новую задачу и привязывает её к активному списку. */
-      function addTask({ title, dueDate }) {
+      function addTask({ title, dueDate, priority }) {
         const newTask = {
           id: crypto.randomUUID(),
           title,
           dueDate,
+          priority,             // 'high' | 'medium' | 'low'
           completed: false,
           createdAt: new Date().toISOString(),
           listId: activeListId, // привязка к текущему списку
