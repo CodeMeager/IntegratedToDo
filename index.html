@@ -396,24 +396,30 @@
      * При первом запуске (или если данных нет) создаёт дефолтный список
      * и мигрирует задачи из формата V1 (ключ 'todo-tasks'), если они есть.
      */
-    function loadData() {
+    function loadFromStorage(key) {
       try {
-        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-        if (saved && Array.isArray(saved.lists)) return saved;
-      } catch {}
+        return JSON.parse(localStorage.getItem(key));
+      } catch (e) {
+        return null;
+      }
+    }
 
-      // Миграция задач из старого формата V1
-      let legacyTasks = [];
-      try {
-        legacyTasks = JSON.parse(localStorage.getItem(LEGACY_KEY)) || [];
-      } catch {}
-
+    function buildDefaultData(legacyTasks) {
       return {
         lists: [{ id: DEFAULT_LIST_ID, name: 'Мои задачи' }],
         // Привязываем старые задачи к дефолтному списку
         tasks: legacyTasks.map(t => ({ ...t, listId: DEFAULT_LIST_ID })),
         activeListId: DEFAULT_LIST_ID,
       };
+    }
+
+    function loadData() {
+      const saved = loadFromStorage(STORAGE_KEY);
+      if (saved && Array.isArray(saved.lists)) return saved;
+
+      // Миграция задач из старого формата V1
+      const legacyTasks = loadFromStorage(LEGACY_KEY) || [];
+      return buildDefaultData(legacyTasks);
     }
 
     /** Сохраняет все данные приложения в LocalStorage одним объектом. */
