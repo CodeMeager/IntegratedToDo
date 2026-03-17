@@ -37,7 +37,7 @@
 
     header h1 { font-size: 1.6rem; font-weight: 700; }
 
-    /* ── Кнопка добавления ── */
+    /* ── Кнопка добавления задачи ── */
     .add-btn {
       padding: 8px 18px;
       background: #2563eb;
@@ -50,6 +50,73 @@
       transition: background 0.15s;
     }
     .add-btn:hover { background: #1d4ed8; }
+
+    /* ── Вкладки списков ── */
+    .list-tabs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 20px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      /* Скрываем полосу прокрутки визуально, но оставляем функциональность */
+      scrollbar-width: none;
+    }
+    .list-tabs::-webkit-scrollbar { display: none; }
+
+    .list-tab {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 12px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s;
+      flex-shrink: 0;
+    }
+    .list-tab:hover { background: #f3f4f6; }
+
+    /* Активная вкладка выделена синим */
+    .list-tab.active {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+    }
+
+    /* Кнопка удаления вкладки — маленький крестик внутри таба */
+    .tab-delete {
+      background: none;
+      border: none;
+      color: inherit;
+      opacity: 0.55;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0 0 1px;
+      transition: opacity 0.15s;
+    }
+    .tab-delete:hover { opacity: 1; }
+
+    /* Кнопка создания нового списка — пунктирный таб с «+» */
+    .tab-add {
+      padding: 6px 14px;
+      background: none;
+      border: 1px dashed #d1d5db;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 1rem;
+      color: #9ca3af;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .tab-add:hover { border-color: #9ca3af; color: #6b7280; }
 
     /* ── Панель выбора даты просмотра ── */
     .date-nav {
@@ -232,7 +299,9 @@
     const { useState, useEffect } = React;
 
     // ── Константы ────────────────────────────────────────────
-    const STORAGE_KEY = 'todo-tasks';
+    const STORAGE_KEY = 'todo-app';      // ключ нового формата
+    const LEGACY_KEY  = 'todo-tasks';    // ключ старого формата (V1)
+    const DEFAULT_LIST_ID = 'default';
 
     // ── Вспомогательные функции ───────────────────────────────
 
@@ -255,19 +324,38 @@
       return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
     }
 
-    /** Загружает массив задач из LocalStorage; возвращает [] при ошибке. */
-    function loadTasks() {
+    /**
+     * Загружает данные приложения из LocalStorage.
+     * При первом запуске (или если данных нет) создаёт дефолтный список
+     * и мигрирует задачи из формата V1 (ключ 'todo-tasks'), если они есть.
+     */
+    function loadData() {
       try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-      } catch {
-        return [];
-      }
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (saved && Array.isArray(saved.lists)) return saved;
+      } catch {}
+
+      // Миграция задач из старого формата V1
+      let legacyTasks = [];
+      try {
+        legacyTasks = JSON.parse(localStorage.getItem(LEGACY_KEY)) || [];
+      } catch {}
+
+      return {
+        lists: [{ id: DEFAULT_LIST_ID, name: 'Мои задачи' }],
+        // Привязываем старые задачи к дефолтному списку
+        tasks: legacyTasks.map(t => ({ ...t, listId: DEFAULT_LIST_ID })),
+        activeListId: DEFAULT_LIST_ID,
+      };
     }
 
-    /** Сохраняет массив задач в LocalStorage. */
-    function saveTasks(tasks) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    /** Сохраняет все данные приложения в LocalStorage одним объектом. */
+    function saveData({ lists, tasks, activeListId }) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ lists, tasks, activeListId }));
     }
+
+    // Загружаем данные один раз при старте приложения
+    const initialData = loadData();
 
     // ── TaskItem ─────────────────────────────────────────────
     /**
@@ -300,6 +388,85 @@
             aria-label="Удалить задачу"
             title="Удалить"
           >×</button>
+        </div>
+      );
+    }
+
+    // ── ListTabs ──────────────────────────────────────────────
+    /**
+     * Горизонтальная полоса вкладок списков.
+     * Пропсы: lists, activeListId, onSwitch(id), onAdd(), onDelete(id)
+     */
+    function ListTabs({ lists, activeListId, onSwitch, onAdd, onDelete }) {
+      return (
+        <div className="list-tabs">
+          {lists.map(list => (
+            <div
+              key={list.id}
+              className={`list-tab ${list.id === activeListId ? 'active' : ''}`}
+              onClick={() => onSwitch(list.id)}
+              title={list.name}
+            >
+              <span>{list.name}</span>
+              {/* Кнопка удаления скрыта, если список единственный */}
+              {lists.length > 1 && (
+                <button
+                  className="tab-delete"
+                  onClick={e => { e.stopPropagation(); onDelete(list.id); }}
+                  aria-label={`Удалить список "${list.name}"`}
+                  title="Удалить список"
+                >×</button>
+              )}
+            </div>
+          ))}
+          {/* Кнопка создания нового списка */}
+          <button className="tab-add" onClick={onAdd} title="Новый список">+</button>
+        </div>
+      );
+    }
+
+    // ── AddListModal ──────────────────────────────────────────
+    /**
+     * Модальное окно создания нового списка задач.
+     * Пропсы: onAdd(name), onClose()
+     */
+    function AddListModal({ onAdd, onClose }) {
+      const [name, setName] = useState('');
+
+      function handleSubmit(e) {
+        e.preventDefault();
+        if (!name.trim()) return;
+        onAdd(name.trim());
+        onClose();
+      }
+
+      // Закрываем модальное окно по клавише Escape
+      useEffect(() => {
+        function onKey(e) { if (e.key === 'Escape') onClose(); }
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, []);
+
+      return (
+        // Клик по затемнению закрывает модальное окно
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Новый список</h2>
+            <form onSubmit={handleSubmit}>
+              <input
+                type="text"
+                placeholder="Название списка"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                autoFocus
+                required
+              />
+              <div className="modal-actions">
+                <button type="button" className="btn-cancel" onClick={onClose}>Отмена</button>
+                <button type="submit" className="btn-submit">Создать</button>
+              </div>
+            </form>
+          </div>
         </div>
       );
     }
@@ -363,33 +530,35 @@
 
     // ── App (корневой компонент) ──────────────────────────────
     function App() {
-      // tasks — единственный источник истины; загружается из LocalStorage при первом рендере
-      const [tasks, setTasks] = useState(loadTasks);
-      const [showModal, setShowModal] = useState(false);
+      // Списки, задачи и активный список — три независимых куска состояния
+      const [lists, setLists]               = useState(initialData.lists);
+      const [tasks, setTasks]               = useState(initialData.tasks);
+      const [activeListId, setActiveListId] = useState(initialData.activeListId);
+
+      const [viewDate, setViewDate]         = useState(getToday); // выбранная дата для просмотра
+      const [showTaskModal, setShowTaskModal]   = useState(false);
+      const [showListModal, setShowListModal]   = useState(false);
 
       const today = getToday();
 
-      // viewDate определяет, задачи какого дня показывать.
-      // По умолчанию — сегодня. Пользователь может выбрать будущую дату.
-      const [viewDate, setViewDate] = useState(today);
-
-      // Синхронизируем задачи с LocalStorage при каждом изменении
+      // Сохраняем все данные при любом изменении
       useEffect(() => {
-        saveTasks(tasks);
-      }, [tasks]);
+        saveData({ lists, tasks, activeListId });
+      }, [lists, tasks, activeListId]);
 
       // ── Производные списки ────────────────────────────────
 
-      // Задачи, срок которых совпадает с сегодняшней датой (всегда нужны для вкладки «Сегодня»)
-      const todayTasks = tasks.filter(t => t.dueDate === today);
-      // Задачи, срок которых уже прошёл
-      const overdueTasks = tasks.filter(t => t.dueDate < today);
-      // Задачи для выбранной будущей даты
-      const futureTasks = tasks.filter(t => t.dueDate === viewDate);
+      // Задачи только активного списка
+      const activeTasks = tasks.filter(t => t.listId === activeListId);
 
-      // ── Обработчики ───────────────────────────────────────
+      // Из активных задач: на сегодня, просроченные, на выбранный будущий день
+      const todayTasks   = activeTasks.filter(t => t.dueDate === today);
+      const overdueTasks = activeTasks.filter(t => t.dueDate < today);
+      const futureTasks  = activeTasks.filter(t => t.dueDate === viewDate);
 
-      /** Создаёт новую задачу и добавляет её в начало списка. */
+      // ── Обработчики задач ─────────────────────────────────
+
+      /** Создаёт новую задачу и привязывает её к активному списку. */
       function addTask({ title, dueDate }) {
         const newTask = {
           id: crypto.randomUUID(),
@@ -397,6 +566,7 @@
           dueDate,
           completed: false,
           createdAt: new Date().toISOString(),
+          listId: activeListId, // привязка к текущему списку
         };
         setTasks(prev => [newTask, ...prev]);
       }
@@ -413,6 +583,38 @@
         setTasks(prev => prev.filter(t => t.id !== id));
       }
 
+      // ── Обработчики списков ───────────────────────────────
+
+      /** Создаёт новый список и сразу переключается на него. */
+      function addList(name) {
+        const newList = { id: crypto.randomUUID(), name };
+        setLists(prev => [...prev, newList]);
+        setActiveListId(newList.id);
+        setViewDate(today); // сбрасываем дату при переходе на новый список
+      }
+
+      /**
+       * Удаляет список и все его задачи.
+       * Переключает на первый оставшийся список.
+       * Не вызывается, если список единственный (кнопка скрыта в ListTabs).
+       */
+      function deleteList(id) {
+        const remaining = lists.filter(l => l.id !== id);
+        setLists(remaining);
+        setTasks(prev => prev.filter(t => t.listId !== id));
+        // Если удаляем активный список — переходим на первый оставшийся
+        if (activeListId === id) {
+          setActiveListId(remaining[0].id);
+          setViewDate(today);
+        }
+      }
+
+      /** Переключает активный список и сбрасывает дату просмотра на сегодня. */
+      function switchList(id) {
+        setActiveListId(id);
+        setViewDate(today);
+      }
+
       // Переключает выбранную дату просмотра; запрещает выбирать прошлое
       function handleViewDateChange(e) {
         const picked = e.target.value;
@@ -426,10 +628,19 @@
         <div className="app">
           <header>
             <h1>To-Do</h1>
-            <button className="add-btn" onClick={() => setShowModal(true)}>
+            <button className="add-btn" onClick={() => setShowTaskModal(true)}>
               + Добавить
             </button>
           </header>
+
+          {/* ── Вкладки списков ── */}
+          <ListTabs
+            lists={lists}
+            activeListId={activeListId}
+            onSwitch={switchList}
+            onAdd={() => setShowListModal(true)}
+            onDelete={deleteList}
+          />
 
           {/* ── Панель навигации по датам ── */}
           <div className="date-nav">
@@ -506,11 +717,19 @@
           )}
 
           {/* ── Модальное окно добавления задачи ── */}
-          {showModal && (
+          {showTaskModal && (
             <AddTaskModal
               onAdd={addTask}
-              onClose={() => setShowModal(false)}
-              minDate={today} // запрещаем добавлять задачи на прошлые даты
+              onClose={() => setShowTaskModal(false)}
+              minDate={today}
+            />
+          )}
+
+          {/* ── Модальное окно создания списка ── */}
+          {showListModal && (
+            <AddListModal
+              onAdd={addList}
+              onClose={() => setShowListModal(false)}
             />
           )}
         </div>
