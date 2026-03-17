@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>To-Do</title>
+
+  <!-- React 18 и ReactDOM через CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- Babel: трансформирует JSX прямо в браузере (подходит для обучения; позже заменить на сборщик) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f5f5;
+      color: #1a1a1a;
+      min-height: 100vh;
+    }
+
+    /* ── Обёртка приложения ── */
+    .app {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+
+    header h1 { font-size: 1.6rem; font-weight: 700; }
+
+    /* ── Кнопка добавления ── */
+    .add-btn {
+      padding: 8px 18px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .add-btn:hover { background: #1d4ed8; }
+
+    /* ── Заголовки секций ── */
+    section { margin-bottom: 24px; }
+
+    section h2 {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+
+    .overdue-section h2 { color: #ef4444; }
+
+    .empty {
+      font-size: 0.9rem;
+      color: #9ca3af;
+      padding: 12px 0;
+    }
+
+    /* ── Карточка задачи ── */
+    .task-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      transition: opacity 0.15s;
+    }
+
+    /* Просроченные задачи получают красную левую границу */
+    .task-item.overdue {
+      border-left: 3px solid #ef4444;
+      background: #fff5f5;
+    }
+
+    /* Выполненные задачи приглушены, название зачёркнуто */
+    .task-item.completed { opacity: 0.5; }
+    .task-item.completed .task-title { text-decoration: line-through; }
+
+    .task-item input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: #2563eb;
+      flex-shrink: 0;
+    }
+
+    .task-title {
+      flex: 1;
+      font-size: 0.95rem;
+    }
+
+    .task-date {
+      font-size: 0.78rem;
+      color: #9ca3af;
+      white-space: nowrap;
+    }
+
+    .delete-btn {
+      background: none;
+      border: none;
+      font-size: 1.1rem;
+      color: #d1d5db;
+      cursor: pointer;
+      padding: 0 2px;
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    .delete-btn:hover { color: #ef4444; }
+
+    /* ── Затемнение под модальным окном ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal {
+      background: #fff;
+      border-radius: 14px;
+      padding: 24px;
+      width: min(420px, 92vw);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+    }
+
+    .modal h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+
+    .modal form { display: flex; flex-direction: column; gap: 12px; }
+
+    .modal input[type="text"],
+    .modal input[type="date"] {
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .modal input:focus { border-color: #2563eb; }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .modal-actions button {
+      padding: 9px 20px;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .modal-actions .btn-cancel {
+      background: #f3f4f6;
+      color: #374151;
+    }
+    .modal-actions .btn-cancel:hover { background: #e5e7eb; }
+
+    .modal-actions .btn-submit {
+      background: #2563eb;
+      color: #fff;
+    }
+    .modal-actions .btn-submit:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ── Константы ────────────────────────────────────────────
+    const STORAGE_KEY = 'todo-tasks';
+
+    // ── Вспомогательные функции ───────────────────────────────
+
+    /** Возвращает сегодняшнюю дату в формате YYYY-MM-DD (локальный часовой пояс). */
+    function getToday() {
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    /** Загружает массив задач из LocalStorage; возвращает [] при ошибке. */
+    function loadTasks() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    /** Сохраняет массив задач в LocalStorage. */
+    function saveTasks(tasks) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    }
+
+    // ── TaskItem ─────────────────────────────────────────────
+    /**
+     * Строка одной задачи.
+     * Пропсы: task, isOverdue, onToggle(id), onDelete(id)
+     */
+    function TaskItem({ task, isOverdue, onToggle, onDelete }) {
+      // Формируем строку CSS-классов в зависимости от состояния задачи
+      const classes = [
+        'task-item',
+        isOverdue ? 'overdue' : '',
+        task.completed ? 'completed' : '',
+      ].filter(Boolean).join(' ');
+
+      return (
+        <div className={classes}>
+          {/* Чекбокс переключает статус выполнения */}
+          <input
+            type="checkbox"
+            checked={task.completed}
+            onChange={() => onToggle(task.id)}
+            aria-label={`Отметить "${task.title}"`}
+          />
+          <span className="task-title">{task.title}</span>
+          <span className="task-date">{task.dueDate}</span>
+          {/* Кнопка удаления */}
+          <button
+            className="delete-btn"
+            onClick={() => onDelete(task.id)}
+            aria-label="Удалить задачу"
+            title="Удалить"
+          >×</button>
+        </div>
+      );
+    }
+
+    // ── AddTaskModal ─────────────────────────────────────────
+    /**
+     * Модальная форма создания новой задачи.
+     * Пропсы: onAdd({ title, dueDate }), onClose()
+     */
+    function AddTaskModal({ onAdd, onClose }) {
+      const [title, setTitle] = useState('');
+      const [dueDate, setDueDate] = useState(getToday); // по умолчанию — сегодня
+
+      function handleSubmit(e) {
+        e.preventDefault();
+        if (!title.trim()) return;
+        onAdd({ title: title.trim(), dueDate });
+        onClose();
+      }
+
+      // Закрываем модальное окно по клавише Escape
+      useEffect(() => {
+        function onKey(e) { if (e.key === 'Escape') onClose(); }
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, []);
+
+      return (
+        // Клик по затемнению закрывает модальное окно
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Новая задача</h2>
+            <form onSubmit={handleSubmit}>
+              <input
+                type="text"
+                placeholder="Название задачи"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                autoFocus
+                required
+              />
+              <input
+                type="date"
+                value={dueDate}
+                onChange={e => setDueDate(e.target.value)}
+                required
+              />
+              <div className="modal-actions">
+                <button type="button" className="btn-cancel" onClick={onClose}>Отмена</button>
+                <button type="submit" className="btn-submit">Добавить</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ── App (корневой компонент) ──────────────────────────────
+    function App() {
+      // tasks — единственный источник истины; загружается из LocalStorage при первом рендере
+      const [tasks, setTasks] = useState(loadTasks);
+      const [showModal, setShowModal] = useState(false);
+
+      const today = getToday();
+
+      // Синхронизируем задачи с LocalStorage при каждом изменении
+      useEffect(() => {
+        saveTasks(tasks);
+      }, [tasks]);
+
+      // ── Производные списки ────────────────────────────────
+      // Задачи, срок которых совпадает с сегодняшней датой
+      const todayTasks = tasks.filter(t => t.dueDate === today);
+      // Задачи, срок которых уже прошёл
+      const overdueTasks = tasks.filter(t => t.dueDate < today);
+
+      // ── Обработчики ───────────────────────────────────────
+
+      /** Создаёт новую задачу и добавляет её в начало списка. */
+      function addTask({ title, dueDate }) {
+        const newTask = {
+          id: crypto.randomUUID(),
+          title,
+          dueDate,
+          completed: false,
+          createdAt: new Date().toISOString(),
+        };
+        setTasks(prev => [newTask, ...prev]);
+      }
+
+      /** Переключает флаг выполнения задачи по id. */
+      function toggleTask(id) {
+        setTasks(prev =>
+          prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
+        );
+      }
+
+      /** Удаляет задачу по id. */
+      function deleteTask(id) {
+        setTasks(prev => prev.filter(t => t.id !== id));
+      }
+
+      // ── Рендер ────────────────────────────────────────────
+      return (
+        <div className="app">
+          <header>
+            <h1>To-Do</h1>
+            <button className="add-btn" onClick={() => setShowModal(true)}>
+              + Добавить
+            </button>
+          </header>
+
+          {/* ── Секция «Сегодня» ── */}
+          <section>
+            <h2>Сегодня</h2>
+            {todayTasks.length === 0
+              ? <p className="empty">Нет задач на сегодня</p>
+              : todayTasks.map(task => (
+                  <TaskItem
+                    key={task.id}
+                    task={task}
+                    isOverdue={false}
+                    onToggle={toggleTask}
+                    onDelete={deleteTask}
+                  />
+                ))
+            }
+          </section>
+
+          {/* ── Секция «Просрочено» (показывается только при наличии просроченных задач) ── */}
+          {overdueTasks.length > 0 && (
+            <section className="overdue-section">
+              <h2>Просрочено</h2>
+              {overdueTasks.map(task => (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  isOverdue={true}
+                  onToggle={toggleTask}
+                  onDelete={deleteTask}
+                />
+              ))}
+            </section>
+          )}
+
+          {/* ── Модальное окно добавления задачи ── */}
+          {showModal && (
+            <AddTaskModal
+              onAdd={addTask}
+              onClose={() => setShowModal(false)}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // Монтируем React-приложение в #root
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
