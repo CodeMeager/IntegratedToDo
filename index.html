@@ -32,7 +32,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 28px;
+      margin-bottom: 16px;
     }
 
     header h1 { font-size: 1.6rem; font-weight: 700; }
@@ -50,6 +50,39 @@
       transition: background 0.15s;
     }
     .add-btn:hover { background: #1d4ed8; }
+
+    /* ── Панель выбора даты просмотра ── */
+    .date-nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+
+    .date-nav input[type="date"] {
+      padding: 7px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .date-nav input[type="date"]:focus { border-color: #2563eb; }
+
+    /* Кнопка «Сегодня» — видна только при просмотре другой даты */
+    .today-btn {
+      padding: 7px 14px;
+      background: #f3f4f6;
+      color: #374151;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .today-btn:hover { background: #e5e7eb; }
 
     /* ── Заголовки секций ── */
     section { margin-bottom: 24px; }
@@ -212,6 +245,16 @@
       return `${yyyy}-${mm}-${dd}`;
     }
 
+    /**
+     * Форматирует дату YYYY-MM-DD в читаемый вид для заголовка секции.
+     * Например: "2025-03-20" → "20 марта 2025"
+     */
+    function formatDateHeading(dateStr) {
+      const [yyyy, mm, dd] = dateStr.split('-');
+      const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
     /** Загружает массив задач из LocalStorage; возвращает [] при ошибке. */
     function loadTasks() {
       try {
@@ -264,9 +307,11 @@
     // ── AddTaskModal ─────────────────────────────────────────
     /**
      * Модальная форма создания новой задачи.
-     * Пропсы: onAdd({ title, dueDate }), onClose()
+     * Пропсы: onAdd({ title, dueDate }), onClose(), minDate (строка YYYY-MM-DD)
+     *
+     * minDate передаётся снаружи, чтобы запретить выбор прошедших дат.
      */
-    function AddTaskModal({ onAdd, onClose }) {
+    function AddTaskModal({ onAdd, onClose, minDate }) {
       const [title, setTitle] = useState('');
       const [dueDate, setDueDate] = useState(getToday); // по умолчанию — сегодня
 
@@ -298,9 +343,11 @@
                 autoFocus
                 required
               />
+              {/* min запрещает выбор прошедших дат прямо в браузерном пикере */}
               <input
                 type="date"
                 value={dueDate}
+                min={minDate}
                 onChange={e => setDueDate(e.target.value)}
                 required
               />
@@ -322,16 +369,23 @@
 
       const today = getToday();
 
+      // viewDate определяет, задачи какого дня показывать.
+      // По умолчанию — сегодня. Пользователь может выбрать будущую дату.
+      const [viewDate, setViewDate] = useState(today);
+
       // Синхронизируем задачи с LocalStorage при каждом изменении
       useEffect(() => {
         saveTasks(tasks);
       }, [tasks]);
 
       // ── Производные списки ────────────────────────────────
-      // Задачи, срок которых совпадает с сегодняшней датой
+
+      // Задачи, срок которых совпадает с сегодняшней датой (всегда нужны для вкладки «Сегодня»)
       const todayTasks = tasks.filter(t => t.dueDate === today);
       // Задачи, срок которых уже прошёл
       const overdueTasks = tasks.filter(t => t.dueDate < today);
+      // Задачи для выбранной будущей даты
+      const futureTasks = tasks.filter(t => t.dueDate === viewDate);
 
       // ── Обработчики ───────────────────────────────────────
 
@@ -359,7 +413,15 @@
         setTasks(prev => prev.filter(t => t.id !== id));
       }
 
+      // Переключает выбранную дату просмотра; запрещает выбирать прошлое
+      function handleViewDateChange(e) {
+        const picked = e.target.value;
+        if (picked >= today) setViewDate(picked);
+      }
+
       // ── Рендер ────────────────────────────────────────────
+      const isViewingToday = viewDate === today;
+
       return (
         <div className="app">
           <header>
@@ -369,36 +431,77 @@
             </button>
           </header>
 
-          {/* ── Секция «Сегодня» ── */}
-          <section>
-            <h2>Сегодня</h2>
-            {todayTasks.length === 0
-              ? <p className="empty">Нет задач на сегодня</p>
-              : todayTasks.map(task => (
-                  <TaskItem
-                    key={task.id}
-                    task={task}
-                    isOverdue={false}
-                    onToggle={toggleTask}
-                    onDelete={deleteTask}
-                  />
-                ))
-            }
-          </section>
+          {/* ── Панель навигации по датам ── */}
+          <div className="date-nav">
+            {/* Пикер даты для выбора дня просмотра; min=today запрещает листать в прошлое */}
+            <input
+              type="date"
+              value={viewDate}
+              min={today}
+              onChange={handleViewDateChange}
+            />
+            {/* Кнопка «Сегодня» появляется только когда выбрана другая дата */}
+            {!isViewingToday && (
+              <button className="today-btn" onClick={() => setViewDate(today)}>
+                ← Сегодня
+              </button>
+            )}
+          </div>
 
-          {/* ── Секция «Просрочено» (показывается только при наличии просроченных задач) ── */}
-          {overdueTasks.length > 0 && (
-            <section className="overdue-section">
-              <h2>Просрочено</h2>
-              {overdueTasks.map(task => (
-                <TaskItem
-                  key={task.id}
-                  task={task}
-                  isOverdue={true}
-                  onToggle={toggleTask}
-                  onDelete={deleteTask}
-                />
-              ))}
+          {/* ── Режим просмотра сегодняшнего дня ── */}
+          {isViewingToday && (
+            <>
+              {/* Секция «Сегодня» */}
+              <section>
+                <h2>Сегодня</h2>
+                {todayTasks.length === 0
+                  ? <p className="empty">Нет задач на сегодня</p>
+                  : todayTasks.map(task => (
+                      <TaskItem
+                        key={task.id}
+                        task={task}
+                        isOverdue={false}
+                        onToggle={toggleTask}
+                        onDelete={deleteTask}
+                      />
+                    ))
+                }
+              </section>
+
+              {/* Секция «Просрочено» — показывается только при наличии просроченных задач */}
+              {overdueTasks.length > 0 && (
+                <section className="overdue-section">
+                  <h2>Просрочено</h2>
+                  {overdueTasks.map(task => (
+                    <TaskItem
+                      key={task.id}
+                      task={task}
+                      isOverdue={true}
+                      onToggle={toggleTask}
+                      onDelete={deleteTask}
+                    />
+                  ))}
+                </section>
+              )}
+            </>
+          )}
+
+          {/* ── Режим просмотра будущей даты ── */}
+          {!isViewingToday && (
+            <section>
+              <h2>{formatDateHeading(viewDate)}</h2>
+              {futureTasks.length === 0
+                ? <p className="empty">Нет задач на этот день</p>
+                : futureTasks.map(task => (
+                    <TaskItem
+                      key={task.id}
+                      task={task}
+                      isOverdue={false}
+                      onToggle={toggleTask}
+                      onDelete={deleteTask}
+                    />
+                  ))
+              }
             </section>
           )}
 
@@ -407,6 +510,7 @@
             <AddTaskModal
               onAdd={addTask}
               onClose={() => setShowModal(false)}
+              minDate={today} // запрещаем добавлять задачи на прошлые даты
             />
           )}
         </div>
