@@ -225,6 +225,51 @@
     }
     .delete-btn:hover { color: #ef4444; }
 
+    /* ── Цветная точка приоритета на карточке задачи ── */
+    .priority-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Кнопка переключения сортировки ── */
+    .sort-btn {
+      margin-left: auto;
+      padding: 7px 12px;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #6b7280;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .sort-btn:hover { background: #e5e7eb; color: #374151; }
+    /* Активное состояние — когда включена сортировка по приоритету */
+    .sort-btn.active { background: #eff6ff; border-color: #bfdbfe; color: #2563eb; }
+
+    /* ── Выбор приоритета в модалке — три кнопки в ряд ── */
+    .priority-selector {
+      display: flex;
+      gap: 8px;
+    }
+
+    .priority-option {
+      flex: 1;
+      padding: 8px 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .priority-option:hover:not(.selected) { background: #f3f4f6; }
+
     /* ── Затемнение под модальным окном ── */
     .modal-overlay {
       position: fixed;
@@ -303,6 +348,28 @@
     const LEGACY_KEY  = 'todo-tasks';    // ключ старого формата (V1)
     const DEFAULT_LIST_ID = 'default';
 
+    /**
+     * Справочник приоритетов.
+     * order — числовой вес для сортировки (меньше = выше в списке).
+     */
+    const PRIORITIES = {
+      high:   { label: 'Высокий', color: '#ef4444', order: 0 },
+      medium: { label: 'Средний', color: '#f59e0b', order: 1 },
+      low:    { label: 'Низкий',  color: '#22c55e', order: 2 },
+    };
+
+    /**
+     * Сортирует задачи по приоритету: Высокий → Средний → Низкий.
+     * Задачи без поля priority считаются «Средним» (обратная совместимость).
+     */
+    function sortByPriority(arr) {
+      return [...arr].sort(
+        (a, b) =>
+          (PRIORITIES[a.priority ?? 'medium'].order) -
+          (PRIORITIES[b.priority ?? 'medium'].order)
+      );
+    }
+
     // ── Вспомогательные функции ───────────────────────────────
 
     /** Возвращает сегодняшнюю дату в формате YYYY-MM-DD (локальный часовой пояс). */
@@ -370,6 +437,9 @@
         task.completed ? 'completed' : '',
       ].filter(Boolean).join(' ');
 
+      // Берём данные приоритета; задачи без поля считаются «Средним»
+      const priority = PRIORITIES[task.priority ?? 'medium'];
+
       return (
         <div className={classes}>
           {/* Чекбокс переключает статус выполнения */}
@@ -378,6 +448,12 @@
             checked={task.completed}
             onChange={() => onToggle(task.id)}
             aria-label={`Отметить "${task.title}"`}
+          />
+          {/* Цветная точка — визуальный индикатор приоритета */}
+          <span
+            className="priority-dot"
+            style={{ background: priority.color }}
+            title={priority.label}
           />
           <span className="task-title">{task.title}</span>
           <span className="task-date">{task.dueDate}</span>
@@ -479,13 +555,14 @@
      * minDate передаётся снаружи, чтобы запретить выбор прошедших дат.
      */
     function AddTaskModal({ onAdd, onClose, minDate }) {
-      const [title, setTitle] = useState('');
-      const [dueDate, setDueDate] = useState(getToday); // по умолчанию — сегодня
+      const [title, setTitle]       = useState('');
+      const [dueDate, setDueDate]   = useState(getToday); // по умолчанию — сегодня
+      const [priority, setPriority] = useState('medium'); // по умолчанию — Средний
 
       function handleSubmit(e) {
         e.preventDefault();
         if (!title.trim()) return;
-        onAdd({ title: title.trim(), dueDate });
+        onAdd({ title: title.trim(), dueDate, priority });
         onClose();
       }
 
@@ -518,6 +595,23 @@
                 onChange={e => setDueDate(e.target.value)}
                 required
               />
+              {/* Три кнопки выбора приоритета; активная окрашивается в цвет уровня */}
+              <div className="priority-selector">
+                {Object.entries(PRIORITIES).map(([key, p]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`priority-option ${priority === key ? 'selected' : ''}`}
+                    style={priority === key
+                      ? { background: p.color, borderColor: p.color, color: '#fff' }
+                      : {}
+                    }
+                    onClick={() => setPriority(key)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={onClose}>Отмена</button>
                 <button type="submit" className="btn-submit">Добавить</button>
@@ -535,9 +629,11 @@
       const [tasks, setTasks]               = useState(initialData.tasks);
       const [activeListId, setActiveListId] = useState(initialData.activeListId);
 
-      const [viewDate, setViewDate]         = useState(getToday); // выбранная дата для просмотра
-      const [showTaskModal, setShowTaskModal]   = useState(false);
-      const [showListModal, setShowListModal]   = useState(false);
+      const [viewDate, setViewDate]           = useState(getToday); // выбранная дата для просмотра
+      const [showTaskModal, setShowTaskModal] = useState(false);
+      const [showListModal, setShowListModal] = useState(false);
+      // false = порядок добавления, true = по убыванию приоритета
+      const [sortedByPriority, setSortedByPriority] = useState(false);
 
       const today = getToday();
 
@@ -551,19 +647,23 @@
       // Задачи только активного списка
       const activeTasks = tasks.filter(t => t.listId === activeListId);
 
-      // Из активных задач: на сегодня, просроченные, на выбранный будущий день
-      const todayTasks   = activeTasks.filter(t => t.dueDate === today);
-      const overdueTasks = activeTasks.filter(t => t.dueDate < today);
-      const futureTasks  = activeTasks.filter(t => t.dueDate === viewDate);
+      // Из активных задач: на сегодня, просроченные, на выбранный будущий день.
+      // Если включена сортировка по приоритету — применяем её к каждому списку.
+      const applySort = arr => sortedByPriority ? sortByPriority(arr) : arr;
+
+      const todayTasks   = applySort(activeTasks.filter(t => t.dueDate === today));
+      const overdueTasks = applySort(activeTasks.filter(t => t.dueDate < today));
+      const futureTasks  = applySort(activeTasks.filter(t => t.dueDate === viewDate));
 
       // ── Обработчики задач ─────────────────────────────────
 
       /** Создаёт новую задачу и привязывает её к активному списку. */
-      function addTask({ title, dueDate }) {
+      function addTask({ title, dueDate, priority }) {
         const newTask = {
           id: crypto.randomUUID(),
           title,
           dueDate,
+          priority,             // 'high' | 'medium' | 'low'
           completed: false,
           createdAt: new Date().toISOString(),
           listId: activeListId, // привязка к текущему списку
@@ -642,7 +742,7 @@
             onDelete={deleteList}
           />
 
-          {/* ── Панель навигации по датам ── */}
+          {/* ── Панель навигации по датам и сортировки ── */}
           <div className="date-nav">
             {/* Пикер даты для выбора дня просмотра; min=today запрещает листать в прошлое */}
             <input
@@ -657,6 +757,14 @@
                 ← Сегодня
               </button>
             )}
+            {/* Переключатель сортировки: по дате добавления ↔ по приоритету */}
+            <button
+              className={`sort-btn ${sortedByPriority ? 'active' : ''}`}
+              onClick={() => setSortedByPriority(prev => !prev)}
+              title="Переключить сортировку"
+            >
+              {sortedByPriority ? '↕ Приоритет' : '↕ По дате'}
+            </button>
           </div>
 
           {/* ── Режим просмотра сегодняшнего дня ── */}
