@@ -251,6 +251,40 @@
     /* Активное состояние — когда включена сортировка по приоритету */
     .sort-btn.active { background: #eff6ff; border-color: #bfdbfe; color: #2563eb; }
 
+    /* ── Счётчик задач ── */
+    .task-counter {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-bottom: 16px;
+    }
+    .counter-done    { color: #22c55e; font-weight: 600; }
+    .counter-pending { color: #f59e0b; font-weight: 600; }
+
+    /* ── Мотивационный тост ── */
+    .motiv-toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2563eb;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 24px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(37,99,235,0.35);
+      z-index: 200;
+      pointer-events: none;
+      animation: toastIn 0.25s ease;
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
     /* ── Выбор приоритета в модалке — три кнопки в ряд ── */
     .priority-selector {
       display: flex;
@@ -357,6 +391,15 @@
       medium: { label: 'Средний', color: '#f59e0b', order: 1 },
       low:    { label: 'Низкий',  color: '#22c55e', order: 2 },
     };
+
+    const MOTIV_PHRASES = [
+      'Отлично! Так держать!',
+      'Ещё одна задача закрыта!',
+      'Ты молодец, продолжай!',
+      'Прогресс очевиден!',
+      'Один шаг к цели!',
+      'Сделано — значит победа!',
+    ];
 
     /**
      * Сортирует задачи по приоритету: Высокий → Средний → Низкий.
@@ -640,6 +683,7 @@
       const [showListModal, setShowListModal] = useState(false);
       // false = порядок добавления, true = по убыванию приоритета
       const [sortedByPriority, setSortedByPriority] = useState(false);
+      const [motivMsg, setMotivMsg] = useState(null);
 
       const today = getToday();
 
@@ -651,7 +695,9 @@
       // ── Производные списки ────────────────────────────────
 
       // Задачи только активного списка
-      const activeTasks = tasks.filter(t => t.listId === activeListId);
+      const activeTasks  = tasks.filter(t => t.listId === activeListId);
+      const doneCount    = activeTasks.filter(t => t.completed).length;
+      const pendingCount = activeTasks.length - doneCount;
 
       // Из активных задач: на сегодня, просроченные, на выбранный будущий день.
       // Если включена сортировка по приоритету — применяем её к каждому списку.
@@ -680,7 +726,16 @@
       /** Переключает флаг выполнения задачи по id. */
       function toggleTask(id) {
         setTasks(prev =>
-          prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
+          prev.map(t => {
+            if (t.id !== id) return t;
+            const nowCompleted = !t.completed;
+            if (nowCompleted) {
+              const phrase = MOTIV_PHRASES[Math.floor(Math.random() * MOTIV_PHRASES.length)];
+              setMotivMsg(phrase);
+              setTimeout(() => setMotivMsg(null), 3000);
+            }
+            return { ...t, completed: nowCompleted };
+          })
         );
       }
 
@@ -747,6 +802,13 @@
             onAdd={() => setShowListModal(true)}
             onDelete={deleteList}
           />
+
+          {/* ── Счётчик задач текущего списка ── */}
+          <div className="task-counter">
+            <span className="counter-done">{doneCount} выполнено</span>
+            <span>·</span>
+            <span className="counter-pending">{pendingCount} осталось</span>
+          </div>
 
           {/* ── Панель навигации по датам и сортировки ── */}
           <div className="date-nav">
@@ -846,6 +908,9 @@
               onClose={() => setShowListModal(false)}
             />
           )}
+
+          {/* ── Мотивационный тост ── */}
+          {motivMsg && <div className="motiv-toast">{motivMsg}</div>}
         </div>
       );
     }
