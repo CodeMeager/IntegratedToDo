@@ -67,3 +67,29 @@ function saveData({ lists, tasks, activeListId }) {
 
 // Загружаем данные один раз при старте приложения
 const initialData = loadData();
+
+// ── Управление темой ──────────────────────────────────────
+const THEME_KEY = 'todo-theme';
+
+function loadTheme() {
+  return localStorage.getItem(THEME_KEY) || 'light';
+}
+
+function saveTheme(theme) {
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+function applyTheme(theme) {
+  document.body.dataset.theme = theme;
+}
+
+/** Переключает тему, сохраняет в localStorage. Возвращает true если стала тёмная. */
+function toggleTheme() {
+  const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  saveTheme(next);
+  return next === 'dark';
+}
+
+// Применяем сохранённую тему сразу при загрузке страницы
+applyTheme(loadTheme());

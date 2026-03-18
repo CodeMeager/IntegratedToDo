@@ -11,6 +11,7 @@ function App() {
   // false = порядок добавления, true = по убыванию приоритета
   const [sortedByPriority, setSortedByPriority] = useState(false);
   const [motivMsg, setMotivMsg] = useState(null);
+  const [isDark, setIsDark]     = useState(loadTheme() === 'dark');
 
   const today = getToday();
 
@@ -116,9 +117,18 @@ function App() {
     <div className="app">
       <header>
         <h1>To-Do</h1>
-        <button className="add-btn" onClick={() => setShowTaskModal(true)}>
-          + Добавить
-        </button>
+        <div className="header-actions">
+          <button
+            className="theme-toggle-btn"
+            onClick={() => setIsDark(toggleTheme())}
+            title="Переключить тему"
+          >
+            {isDark ? '☀️' : '🌙'}
+          </button>
+          <button className="add-btn" onClick={() => setShowTaskModal(true)}>
+            + Добавить
+          </button>
+        </div>
       </header>
 
       {/* ── Вкладки списков ── */}
