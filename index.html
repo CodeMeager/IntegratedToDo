@@ -317,13 +317,63 @@
       color: #fff;
     }
     .modal-actions .btn-submit:hover { background: #1d4ed8; }
+
+    /* ── Счётчик задач в шапке ── */
+    .task-counter {
+      font-size: 0.8rem;
+      color: #9ca3af;
+      font-weight: 400;
+      margin-top: 2px;
+    }
+    .task-counter .counter-done { color: #22c55e; font-weight: 600; }
+
+    header .header-left { display: flex; flex-direction: column; }
+
+    /* ── Мотивационный тост ── */
+    .motiv-toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(0);
+      background: #1e293b;
+      color: #f8fafc;
+      padding: 11px 22px;
+      border-radius: 24px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 200;
+      animation: toastIn 0.25s ease, toastOut 0.3s ease 2.2s forwards;
+    }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    @keyframes toastOut {
+      from { opacity: 1; transform: translateX(-50%) translateY(0); }
+      to   { opacity: 0; transform: translateX(-50%) translateY(16px); }
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
+
+    // ── Мотивационные фразы ───────────────────────────────────
+    const MOTIVATIONS = [
+      'Отличный настрой — задача уже в деле!',
+      'Каждая задача — шаг вперёд.',
+      'Записал — значит сделаешь!',
+      'Ещё одна цель, ещё один успех.',
+      'Фокус и действие — твой рецепт.',
+      'Список пополнен, прогресс продолжается.',
+      'Маленький план — большой результат.',
+    ];
 
     // ── Константы ────────────────────────────────────────────
     const STORAGE_KEY = 'todo-app';      // ключ нового формата
@@ -615,6 +665,10 @@
       const [showTaskModal, setShowTaskModal]   = useState(false);
       const [showListModal, setShowListModal]   = useState(false);
 
+      // Текст мотивационного тоста (null = скрыт)
+      const [motivPhrase, setMotivPhrase] = useState(null);
+      const motivTimer = useRef(null);
+
       const today = getToday();
 
       // Сохраняем все данные при любом изменении
@@ -647,6 +701,12 @@
           listId: activeListId, // привязка к текущему списку
         };
         setTasks(prev => [newTask, ...prev]);
+
+        // Показываем случайную мотивационную фразу
+        const phrase = MOTIVATIONS[Math.floor(Math.random() * MOTIVATIONS.length)];
+        setMotivPhrase(phrase);
+        clearTimeout(motivTimer.current);
+        motivTimer.current = setTimeout(() => setMotivPhrase(null), 2500);
       }
 
       /** Переключает флаг выполнения задачи по id. */
@@ -702,10 +762,22 @@
       // ── Рендер ────────────────────────────────────────────
       const isViewingToday = viewDate === today;
 
+      // Данные для счётчика
+      const totalCount    = activeTasks.length;
+      const completedCount = activeTasks.filter(t => t.completed).length;
+
       return (
         <div className="app">
           <header>
-            <h1>To-Do</h1>
+            <div className="header-left">
+              <h1>To-Do</h1>
+              {totalCount > 0 && (
+                <span className="task-counter">
+                  Задач: {totalCount} · Выполнено:{' '}
+                  <span className="counter-done">{completedCount}</span>
+                </span>
+              )}
+            </div>
             <button className="add-btn" onClick={() => setShowTaskModal(true)}>
               + Добавить
             </button>
@@ -809,6 +881,11 @@
               onAdd={addList}
               onClose={() => setShowListModal(false)}
             />
+          )}
+
+          {/* ── Мотивационный тост ── */}
+          {motivPhrase && (
+            <div className="motiv-toast">{motivPhrase}</div>
           )}
         </div>
       );
